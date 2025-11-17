@@ -10,36 +10,39 @@ from sklearn.metrics import mean_squared_error
 from datetime import datetime,timedelta
 import pytz
 import os
+import json
 
 # Load historical data once at module level for performance
 def load_historical_features():
     """Load historical weather features from CSV"""
-    # Try multiple possible paths
+    # Try multiple possible paths (works on both local and Render)
     possible_paths = [
-        r'c:\Users\ROG\Documents\MLearning\HCMWeatherDaily_Cleaned.csv',
+        os.path.join(settings.BASE_DIR, 'data', 'HCMWeatherDaily_Cleaned.csv'),
+        os.path.join(settings.BASE_DIR, 'HCMWeatherDaily_Cleaned.csv'),
+        os.path.join(settings.BASE_DIR, '..', 'data', 'HCMWeatherDaily_Cleaned.csv'),
         os.path.join(settings.BASE_DIR, '..', 'HCMWeatherDaily_Cleaned.csv'),
-        r'c:\Users\ROG\Documents\MLearning\weatherProject\HCMWeatherDaily_Cleaned.csv',
     ]
     
     csv_path = None
     for path in possible_paths:
         if os.path.exists(path):
             csv_path = path
+            print(f"✓ Found CSV at: {csv_path}")
             break
     
     if not csv_path:
-        print(f"CSV not found in any of these paths: {possible_paths}")
+        print(f"✗ CSV not found in: {possible_paths}")
+        print(f"  BASE_DIR = {settings.BASE_DIR}")
         return None
     
     try:
         df = pd.read_csv(csv_path)
-        # Ensure datetime column is parsed
         if 'datetime' in df.columns:
             df['datetime'] = pd.to_datetime(df['datetime'])
-        print(f"Successfully loaded CSV from {csv_path}")
+        print(f"✓ CSV loaded successfully ({len(df)} rows)")
         return df
     except Exception as e:
-        print(f"Error loading CSV from {csv_path}: {e}")
+        print(f"✗ Error loading CSV: {e}")
         return None
 
 # Cache the historical data
@@ -214,7 +217,14 @@ def weather_view(request):
     weather_data['css_background_class'] = css_background_class
     
     # Prepare week series for template/JS (times, temps, hums)
-    import json
+    # Add default forecast if not already set
+    for i in range(1, 8):
+        if f'time{i}' not in weather_data:
+            forecast_date = datetime.now() + timedelta(days=i)
+            weather_data[f'time{i}'] = forecast_date.strftime('%A %d %b')
+            weather_data[f'temp{i}'] = weather_data.get('current_temp', 29) + (i % 3)
+            weather_data[f'hum{i}'] = weather_data.get('humidity', 78) + (i % 5)
+    
     week_times = [weather_data[f'time{i}'] for i in range(1,8)]
     week_temps = [weather_data[f'temp{i}'] for i in range(1,8)]
     week_hums = [weather_data[f'hum{i}'] for i in range(1,8)]
