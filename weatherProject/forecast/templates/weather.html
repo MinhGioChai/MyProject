@@ -16,9 +16,22 @@
         <section class="left-panel">
             <div class="left-header">
                 <h1 class="primary-title">Weather Forecasting Project</h1>
-                <div class="date-top">
-                    <i class="bi bi-calendar"></i>{{ date }}
-                </div>
+                <form method="get" class="date-picker-form" id="datePickerForm">
+                    <label for="dateInput" class="date-label">
+                        <i class="bi bi-calendar"></i>
+                        <span>Select date</span>
+                    </label>
+                    <div class="date-input-wrapper">
+                        <input
+                            type="date"
+                            id="dateInput"
+                            name="date"
+                            value="{{ date }}"
+                            max="{{ max_date }}"
+                            onchange="this.form.submit()"
+                        />
+                    </div>
+                </form>
             </div>
             <div class="left-content">
                 <h2 class="condition-text">

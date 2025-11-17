@@ -126,58 +126,118 @@ def get_css_class_from_condition(description):
 def weather_view(request):
     # Load historical features from CSV
     recent_features = get_recent_features(days_back=30)
-    
-    # Build weather_data from latest CSV record
+    # Determine if user selected a date via query parameter
+    selected_date_str = request.GET.get('date')
+    selected_record = None
+
+    if _historical_data is not None and 'datetime' in _historical_data.columns:
+        if selected_date_str:
+            try:
+                parsed_date = pd.to_datetime(selected_date_str).date()
+                # Filter rows matching the selected date (date-only comparison)
+                matching_rows = _historical_data[_historical_data['datetime'].dt.date == parsed_date]
+                if not matching_rows.empty:
+                    selected_record = matching_rows.iloc[-1]
+            except Exception:
+                # Ignore parsing errors; will fallback to latest
+                pass
+        # Fallback to latest record if no matching row
+        if selected_record is None and len(_historical_data) > 0:
+            selected_record = _historical_data.iloc[-1]
+
+    # Build base weather_data (defaults)
     weather_data = {
-        'date': '2023-07-13',
+        'date': selected_date_str if selected_date_str else '2025-10-08',
         'city': 'Ho Chi Minh City',
         'country': 'VN',
         'description': 'clear',
+        # Default numeric values (used if no record is found)
+        'current_temp': 29,
+        'feels_like': 31,
+        'humidity': 78,
+        'clouds': 90,
+        'pressure': 1008,
+        'wind': 5,
+        'visibility': 8000,
+        'MaxTemp': 32,
+        'Mintemp': 25,
+        'max_date': '2025-10-08',  # Maximum date in dataset
     }
-    
-    # If we have CSV data, populate weather_data from it
-    if recent_features and recent_features.get('latest_record') is not None:
-        latest = recent_features['latest_record']
-        
+
+    # If we have a record (selected or latest), populate weather_data
+    if selected_record is not None:
+        record = selected_record
         # Map CSV columns to weather_data keys
         weather_data.update({
-            'date': str(latest.get('datetime', '2023-07-13'))[:10] if 'datetime' in latest else '2023-07-13',
-            'current_temp': int(latest.get('temp', 29)) if pd.notna(latest.get('temp')) else 29,
-            'feels_like': int(latest.get('feelslike', 31)) if pd.notna(latest.get('feelslike')) else 31,
-            'humidity': int(latest.get('humidity', 78)) if pd.notna(latest.get('humidity')) else 78,
-            'clouds': int(latest.get('cloudcover', 90)) if pd.notna(latest.get('cloudcover')) else 90,
-            'pressure': int(latest.get('sealevelpressure', 1008)) if pd.notna(latest.get('sealevelpressure')) else 1008,
-            'wind': int(latest.get('windspeed', 5)) if pd.notna(latest.get('windspeed')) else 5,
-            'visibility': int(latest.get('visibility', 8000)) if pd.notna(latest.get('visibility')) else 8000,
-            'MaxTemp': int(latest.get('tempmax', 32)) if pd.notna(latest.get('tempmax')) else 32,
-            'Mintemp': int(latest.get('tempmin', 25)) if pd.notna(latest.get('tempmin')) else 25,
-            'description': latest.get('conditions', 'clear') if pd.notna(latest.get('conditions')) else 'clear',
+            'date': str(record.get('datetime', weather_data['date']))[:10],
+            'current_temp': int(record.get('temp', 29)) if pd.notna(record.get('temp')) else 29,
+            'feels_like': int(record.get('feelslike', 31)) if pd.notna(record.get('feelslike')) else 31,
+            'humidity': int(record.get('humidity', 78)) if pd.notna(record.get('humidity')) else 78,
+            'clouds': int(record.get('cloudcover', 90)) if pd.notna(record.get('cloudcover')) else 90,
+            'pressure': int(record.get('sealevelpressure', 1008)) if pd.notna(record.get('sealevelpressure')) else 1008,
+            'wind': int(record.get('windspeed', 5)) if pd.notna(record.get('windspeed')) else 5,
+            'visibility': int(record.get('visibility', 8000)) if pd.notna(record.get('visibility')) else 8000,
+            'MaxTemp': int(record.get('tempmax', 32)) if pd.notna(record.get('tempmax')) else 32,
+            'Mintemp': int(record.get('tempmin', 25)) if pd.notna(record.get('tempmin')) else 25,
+            'description': record.get('conditions', 'clear') if pd.notna(record.get('conditions')) else 'clear',
         })
-        
-        # Add 7-day forecast (using rolling window from CSV if available, else simulate)
+
+        # Build a 7-day forecast AFTER the selected date
         df = _historical_data
-        if df is not None and len(df) >= 7:
-            # Use last 7 days from CSV as forecast (real data simulation)
-            forecast_subset = df.tail(7).reset_index(drop=True)
-            for i in range(1, 8):
-                if i <= len(forecast_subset):
-                    row = forecast_subset.iloc[i-1]
-                    weather_data[f'time{i}'] = pd.to_datetime(row.get('datetime', datetime.now())).strftime('%A %d %b')
-                    weather_data[f'temp{i}'] = int(row.get('temp', 29)) if pd.notna(row.get('temp')) else 29
-                    weather_data[f'hum{i}'] = int(row.get('humidity', 78)) if pd.notna(row.get('humidity')) else 78
-                else:
-                    # Fallback if not enough data
-                    forecast_date = datetime.now() + timedelta(days=i)
-                    weather_data[f'time{i}'] = forecast_date.strftime('%A %d %b')
-                    weather_data[f'temp{i}'] = weather_data['current_temp'] + (i % 3)
-                    weather_data[f'hum{i}'] = weather_data['humidity'] + (i % 5)
+        forecast_subset = None
+        if df is not None and 'datetime' in df.columns:
+            try:
+                current_date = pd.to_datetime(weather_data['date']).date()
+                # Get rows AFTER the selected date (next 7 days)
+                after_date = df[df['datetime'].dt.date > current_date]
+                if len(after_date) >= 7:
+                    # Take the next 7 days after selected date
+                    forecast_subset = after_date.head(7).reset_index(drop=True)
+                elif len(after_date) > 0:
+                    # Use whatever days we have and fill the rest synthetically
+                    forecast_subset = after_date.head(len(after_date)).reset_index(drop=True)
+            except Exception:
+                pass
+
+        if forecast_subset is not None and len(forecast_subset) > 0:
+            # Use actual data for available days
+            for i in range(1, min(8, len(forecast_subset) + 1)):
+                row = forecast_subset.iloc[i-1]
+                weather_data[f'time{i}'] = pd.to_datetime(row.get('datetime', datetime.now())).strftime('%A %d %b')
+                weather_data[f'temp{i}'] = int(row.get('temp', 29)) if pd.notna(row.get('temp')) else 29
+                weather_data[f'hum{i}'] = int(row.get('humidity', 78)) if pd.notna(row.get('humidity')) else 78
+            
+            # Fill remaining days with synthetic predictions if needed
+            if len(forecast_subset) < 7:
+                try:
+                    last_available_date = pd.to_datetime(forecast_subset.iloc[-1]['datetime']).date()
+                    for i in range(len(forecast_subset) + 1, 8):
+                        days_ahead = i - len(forecast_subset)
+                        forecast_date = last_available_date + timedelta(days=days_ahead)
+                        # Simple prediction: slight variation from current temp
+                        weather_data[f'time{i}'] = forecast_date.strftime('%A %d %b')
+                        weather_data[f'temp{i}'] = weather_data['current_temp'] + ((i - 1) % 3 - 1)
+                        weather_data[f'hum{i}'] = weather_data['humidity'] + ((i - 1) % 5 - 2)
+                except Exception:
+                    # Fallback to simple synthetic
+                    for i in range(len(forecast_subset) + 1, 8):
+                        forecast_date = datetime.now() + timedelta(days=i)
+                        weather_data[f'time{i}'] = forecast_date.strftime('%A %d %b')
+                        weather_data[f'temp{i}'] = weather_data['current_temp'] + ((i - 1) % 3 - 1)
+                        weather_data[f'hum{i}'] = weather_data['humidity'] + ((i - 1) % 5 - 2)
         else:
-            # Fallback: generate forecast based on current temp
+            # No data available after selected date - create synthetic forecast
+            try:
+                base_date = pd.to_datetime(weather_data['date']).date()
+            except:
+                base_date = datetime.now().date()
+            
             for i in range(1, 8):
-                forecast_date = datetime.now() + timedelta(days=i)
+                forecast_date = base_date + timedelta(days=i)
                 weather_data[f'time{i}'] = forecast_date.strftime('%A %d %b')
-                weather_data[f'temp{i}'] = weather_data['current_temp'] + (i % 3)
-                weather_data[f'hum{i}'] = weather_data['humidity'] + (i % 5)
+                # Simple prediction model: slight temperature variation
+                weather_data[f'temp{i}'] = weather_data['current_temp'] + ((i - 1) % 3 - 1)
+                weather_data[f'hum{i}'] = weather_data['humidity'] + ((i - 1) % 5 - 2)
     
     # Add historical context features
     if recent_features:
