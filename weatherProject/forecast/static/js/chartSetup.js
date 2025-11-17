@@ -17,14 +17,16 @@ document.addEventListener("DOMContentLoaded", () => {
     // Prefer data provided by the server via data attributes on the canvas
     let times = [];
     let temps = [];
-    let hums = [];
+    let actualTemps = [];
+    let predTemps = [];
 
     try {
         const ds = chartElement.dataset;
         if (ds.times && ds.temps) {
             times = JSON.parse(ds.times);
             temps = JSON.parse(ds.temps);
-            if (ds.hums) hums = JSON.parse(ds.hums);
+            if (ds.actualTemps) actualTemps = JSON.parse(ds.actualTemps);
+            if (ds.predTemps) predTemps = JSON.parse(ds.predTemps);
         }
     } catch (e) {
         console.warn('Failed to parse dataset on canvas, falling back to DOM parse', e);
@@ -62,8 +64,44 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Build datasets; temperature uses left axis, humidity uses right axis (if available)
-    const datasets = [
-        {
+    const datasets = [];
+
+    // Actual temps (solid blue)
+    if (actualTemps && actualTemps.length) {
+        datasets.push({
+            label: "Actual Temp (°C)",
+            data: actualTemps,
+            borderColor: "#4A90E2",
+            backgroundColor: 'rgba(74,144,226,0.12)',
+            borderWidth: 2,
+            tension: 0.35,
+            pointRadius: 3,
+            fill: false,
+            spanGaps: true,
+            yAxisID: 'y'
+        });
+    }
+
+    // Predicted temps (dashed amber)
+    if (predTemps && predTemps.length) {
+        datasets.push({
+            label: "Predicted Temp (°C)",
+            data: predTemps,
+            borderColor: "#F5C542",
+            backgroundColor: 'rgba(245,197,66,0.10)',
+            borderWidth: 2,
+            borderDash: [6, 6],
+            tension: 0.35,
+            pointRadius: 3,
+            fill: false,
+            spanGaps: true,
+            yAxisID: 'y'
+        });
+    }
+
+    // Fallback: legacy temps if provided (keep backwards compatibility)
+    if ((!actualTemps || !actualTemps.length) && (!predTemps || !predTemps.length) && temps && temps.length) {
+        datasets.push({
             label: "Temperature (°C)",
             data: temps,
             borderColor: "#4A90E2",
@@ -73,22 +111,10 @@ document.addEventListener("DOMContentLoaded", () => {
             pointRadius: 3,
             fill: true,
             yAxisID: 'y'
-        }
-    ];
-
-    if (hums && hums.length === temps.length) {
-        datasets.push({
-            label: "Humidity (%)",
-            data: hums,
-            borderColor: "#FF6B6B",
-            backgroundColor: 'rgba(255,107,107,0.08)',
-            borderWidth: 2,
-            tension: 0.4,
-            pointRadius: 3,
-            fill: false,
-            yAxisID: 'y1'
         });
     }
+
+    // Humidity removed from the chart per request
 
     // Create Chart.js line chart
     window._forecastChart = new Chart(ctx, {
@@ -127,19 +153,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     },
                     grid: { color: "rgba(255,255,255,0.2)" }
                 },
-                y1: {
-                    display: datasets.length > 1,
-                    position: 'right',
-                    title: {
-                        display: true,
-                        text: 'Humidity (%)',
-                        color: '#ffffff'
-                    },
-                    ticks: {
-                        color: '#ffffff'
-                    },
-                    grid: { drawOnChartArea: false }
-                },
+                // No secondary y-axis (humidity removed)
                 x: {
                     ticks: { color: "#ffffff", font: { weight: "bold" } },
                     grid: { color: "rgba(255,255,255,0.1)" }

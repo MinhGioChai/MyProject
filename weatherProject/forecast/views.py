@@ -41,6 +41,42 @@ def load_historical_features():
 # Cache the historical data
 _historical_data = load_historical_features()
 
+# Load predicted data once at module level for performance
+def load_predicted_data():
+    """Load predicted temperatures from CSV (supports multiple filenames)"""
+    possible_paths = [
+        os.path.join(settings.BASE_DIR, 'data', 'predict_dataset.csv'),
+        os.path.join(settings.BASE_DIR, 'data', 'predicted_data.csv'),
+        os.path.join(settings.BASE_DIR, 'predict_dataset.csv'),
+        os.path.join(settings.BASE_DIR, 'predicted_data.csv'),
+        os.path.join(settings.BASE_DIR, '..', 'data', 'predict_dataset.csv'),
+        os.path.join(settings.BASE_DIR, '..', 'data', 'predicted_data.csv'),
+    ]
+
+    csv_path = None
+    for path in possible_paths:
+        if os.path.exists(path):
+            csv_path = path
+            print(f"✓ Found predicted CSV at: {csv_path}")
+            break
+
+    if not csv_path:
+        print(f"✗ Predicted CSV not found in: {possible_paths}")
+        return None
+
+    try:
+        df = pd.read_csv(csv_path)
+        if 'datetime' in df.columns:
+            df['datetime'] = pd.to_datetime(df['datetime'])
+        # Normalize column names for ease of access
+        df.columns = [c.strip() for c in df.columns]
+        return df
+    except Exception as e:
+        print(f"✗ Error loading predicted CSV: {e}")
+        return None
+
+_predicted_data = load_predicted_data()
+
 def get_recent_features(days_back=30):
     """Get recent historical features for context and latest weather data"""
     global _historical_data
@@ -147,7 +183,7 @@ def weather_view(request):
 
     # Build base weather_data (defaults)
     weather_data = {
-        'date': selected_date_str if selected_date_str else '2025-10-08',
+        'date': selected_date_str if selected_date_str else '2025-10-04',
         'city': 'Ho Chi Minh City',
         'country': 'VN',
         'description': 'clear',
@@ -161,16 +197,38 @@ def weather_view(request):
         'visibility': 8000,
         'MaxTemp': 32,
         'Mintemp': 25,
-        'max_date': '2025-10-08',  # Maximum date in dataset
+        'max_date': '2025-10-08',  # Maximum date in dataset - forecast will show available days only
     }
 
     # If we have a record (selected or latest), populate weather_data
     if selected_record is not None:
         record = selected_record
+        
+        # Get predicted temperature for today (Pred_Day 0) from predicted CSV
+        predicted_temp_today = None
+        if _predicted_data is not None and 'datetime' in _predicted_data.columns:
+            try:
+                pred_df = _predicted_data.copy()
+                pred_df['date_only'] = pred_df['datetime'].dt.date
+                parsed_date = pd.to_datetime(str(record.get('datetime', weather_data['date']))[:10]).date()
+                matching_pred = pred_df[pred_df['date_only'] == parsed_date]
+                if not matching_pred.empty:
+                    pred_row = matching_pred.iloc[-1]
+                    # Look for Pred_Day 0 column
+                    for col in pred_row.index:
+                        if col.lower().strip() == 'pred_day 0':
+                            predicted_temp_today = int(pred_row[col]) if pd.notna(pred_row[col]) else None
+                            break
+            except Exception:
+                pass
+        
+        # Use predicted temp if available, otherwise fallback to actual temp
+        display_temp = predicted_temp_today if predicted_temp_today is not None else (int(record.get('temp', 29)) if pd.notna(record.get('temp')) else 29)
+        
         # Map CSV columns to weather_data keys
         weather_data.update({
             'date': str(record.get('datetime', weather_data['date']))[:10],
-            'current_temp': int(record.get('temp', 29)) if pd.notna(record.get('temp')) else 29,
+            'current_temp': display_temp,  # Use predicted temperature
             'feels_like': int(record.get('feelslike', 31)) if pd.notna(record.get('feelslike')) else 31,
             'humidity': int(record.get('humidity', 78)) if pd.notna(record.get('humidity')) else 78,
             'clouds': int(record.get('cloudcover', 90)) if pd.notna(record.get('cloudcover')) else 90,
@@ -182,62 +240,92 @@ def weather_view(request):
             'description': record.get('conditions', 'clear') if pd.notna(record.get('conditions')) else 'clear',
         })
 
-        # Build a 7-day forecast AFTER the selected date
+        # Determine forecast horizon from predicted columns (default 7, usually 5)
+        try:
+            current_date = pd.to_datetime(weather_data['date']).date()
+        except Exception:
+            current_date = datetime.now().date()
+
+        horizon = 7
+        if _predicted_data is not None and 'datetime' in _predicted_data.columns:
+            try:
+                pred_df_h = _predicted_data.copy()
+                pred_df_h['date_only'] = pred_df_h['datetime'].dt.date
+                row_h = pred_df_h[pred_df_h['date_only'] == current_date]
+                if not row_h.empty:
+                    cols = []
+                    for c in pred_df_h.columns:
+                        cl = c.lower().strip()
+                        if cl.startswith('pred_day'):
+                            try:
+                                idx = int(cl.replace('pred_day', '').strip())
+                                cols.append(idx)
+                            except Exception:
+                                pass
+                    if cols:
+                        horizon = min(len(sorted([i for i in cols if i >= 0])), 7)
+            except Exception:
+                pass
+
+        if horizon <= 0:
+            horizon = 5  # sensible default
+
+        # Build a forecast starting from TODAY (D+0) with dynamic horizon
+        # D+0 = today (selected date), D+1 = tomorrow, etc.
         df = _historical_data
         forecast_subset = None
+        actual_horizon = horizon  # Track actual available days
         if df is not None and 'datetime' in df.columns:
             try:
-                current_date = pd.to_datetime(weather_data['date']).date()
-                # Get rows AFTER the selected date (next 7 days)
-                after_date = df[df['datetime'].dt.date > current_date]
-                if len(after_date) >= 7:
-                    # Take the next 7 days after selected date
-                    forecast_subset = after_date.head(7).reset_index(drop=True)
-                elif len(after_date) > 0:
-                    # Use whatever days we have and fill the rest synthetically
-                    forecast_subset = after_date.head(len(after_date)).reset_index(drop=True)
+                # Get rows starting from current_date (inclusive) for horizon days
+                from_date = df[df['datetime'].dt.date >= current_date]
+                if len(from_date) >= horizon:
+                    # Take horizon days starting from current_date
+                    forecast_subset = from_date.head(horizon).reset_index(drop=True)
+                    actual_horizon = horizon
+                elif len(from_date) > 0:
+                    # Only use what we actually have - no synthetic fill
+                    forecast_subset = from_date.head(len(from_date)).reset_index(drop=True)
+                    actual_horizon = len(from_date)
             except Exception:
                 pass
 
         if forecast_subset is not None and len(forecast_subset) > 0:
-            # Use actual data for available days
-            for i in range(1, min(8, len(forecast_subset) + 1)):
-                row = forecast_subset.iloc[i-1]
+            # Get predicted temperatures from predicted CSV for each day
+            pred_temps_map = {}  # Map day index to predicted temp
+            if _predicted_data is not None and 'datetime' in _predicted_data.columns:
+                try:
+                    pred_df = _predicted_data.copy()
+                    pred_df['date_only'] = pred_df['datetime'].dt.date
+                    matching_pred = pred_df[pred_df['date_only'] == current_date]
+                    if not matching_pred.empty:
+                        pred_row = matching_pred.iloc[-1]
+                        # Extract Pred_Day 0, 1, 2, 3, 4
+                        for col in pred_row.index:
+                            col_lower = col.lower().strip()
+                            if col_lower.startswith('pred_day'):
+                                try:
+                                    day_idx = int(col_lower.replace('pred_day', '').strip())
+                                    pred_temps_map[day_idx] = int(pred_row[col]) if pd.notna(pred_row[col]) else None
+                                except Exception:
+                                    pass
+                except Exception:
+                    pass
+            
+            # Use predicted temps for available days (D+0 to D+actual_horizon-1)
+            for i in range(0, actual_horizon):
+                row = forecast_subset.iloc[i]
+                # i=0 is today (time0, temp0), i=1 is tomorrow (time1, temp1), etc.
                 weather_data[f'time{i}'] = pd.to_datetime(row.get('datetime', datetime.now())).strftime('%A %d %b')
-                weather_data[f'temp{i}'] = int(row.get('temp', 29)) if pd.notna(row.get('temp')) else 29
+                # Use predicted temp if available, otherwise fallback to actual
+                weather_data[f'temp{i}'] = pred_temps_map.get(i, int(row.get('temp', 29)) if pd.notna(row.get('temp')) else 29)
                 weather_data[f'hum{i}'] = int(row.get('humidity', 78)) if pd.notna(row.get('humidity')) else 78
             
-            # Fill remaining days with synthetic predictions if needed
-            if len(forecast_subset) < 7:
-                try:
-                    last_available_date = pd.to_datetime(forecast_subset.iloc[-1]['datetime']).date()
-                    for i in range(len(forecast_subset) + 1, 8):
-                        days_ahead = i - len(forecast_subset)
-                        forecast_date = last_available_date + timedelta(days=days_ahead)
-                        # Simple prediction: slight variation from current temp
-                        weather_data[f'time{i}'] = forecast_date.strftime('%A %d %b')
-                        weather_data[f'temp{i}'] = weather_data['current_temp'] + ((i - 1) % 3 - 1)
-                        weather_data[f'hum{i}'] = weather_data['humidity'] + ((i - 1) % 5 - 2)
-                except Exception:
-                    # Fallback to simple synthetic
-                    for i in range(len(forecast_subset) + 1, 8):
-                        forecast_date = datetime.now() + timedelta(days=i)
-                        weather_data[f'time{i}'] = forecast_date.strftime('%A %d %b')
-                        weather_data[f'temp{i}'] = weather_data['current_temp'] + ((i - 1) % 3 - 1)
-                        weather_data[f'hum{i}'] = weather_data['humidity'] + ((i - 1) % 5 - 2)
+            # Keep prediction horizon (5 days) for chart, use actual horizon for forecast box
+            forecast_box_horizon = actual_horizon
         else:
-            # No data available after selected date - create synthetic forecast
-            try:
-                base_date = pd.to_datetime(weather_data['date']).date()
-            except:
-                base_date = datetime.now().date()
-            
-            for i in range(1, 8):
-                forecast_date = base_date + timedelta(days=i)
-                weather_data[f'time{i}'] = forecast_date.strftime('%A %d %b')
-                # Simple prediction model: slight temperature variation
-                weather_data[f'temp{i}'] = weather_data['current_temp'] + ((i - 1) % 3 - 1)
-                weather_data[f'hum{i}'] = weather_data['humidity'] + ((i - 1) % 5 - 2)
+            # No data available - don't show forecast box
+            forecast_box_horizon = 0
     
     # Add historical context features
     if recent_features:
@@ -269,12 +357,122 @@ def weather_view(request):
     weather_data['icon_class'] = icon_class
     weather_data['css_background_class'] = css_background_class
     
-    # Prepare week series for template/JS (times, temps, hums)
-    week_times = [weather_data[f'time{i}'] for i in range(1,8)]
-    week_temps = [weather_data[f'temp{i}'] for i in range(1,8)]
-    week_hums = [weather_data[f'hum{i}'] for i in range(1,8)]
+    # Prepare week series for template/JS with dynamic horizon based on predictions
+    week_times = [weather_data.get(f'time{i}') for i in range(0,8)]
+    week_temps = [weather_data.get(f'temp{i}') for i in range(0,8)]
+
+    # Determine base date and prediction horizon (from Pred_Day columns)
+    try:
+        base_date = pd.to_datetime(weather_data['date']).date()
+    except Exception:
+        base_date = datetime.now().date()
+
+    # Determine prediction horizon from predicted columns (typically 5)
+    pred_horizon = 5  # default
+    if _predicted_data is not None and 'datetime' in _predicted_data.columns:
+        try:
+            pred_df_h2 = _predicted_data.copy()
+            pred_df_h2['date_only'] = pred_df_h2['datetime'].dt.date
+            row_h2 = pred_df_h2[pred_df_h2['date_only'] == base_date]
+            if not row_h2.empty:
+                cols2 = []
+                for c in pred_df_h2.columns:
+                    cl = c.lower().strip()
+                    if cl.startswith('pred_day'):
+                        try:
+                            idx = int(cl.replace('pred_day', '').strip())
+                            cols2.append(idx)
+                        except Exception:
+                            pass
+                if cols2:
+                    pred_horizon = len(sorted([i for i in cols2 if i >= 0]))
+        except Exception:
+            pass
+
+    # Use prediction horizon for chart (not limited by historical data)
+    horizon = pred_horizon if pred_horizon > 0 else 5
+
+    # Create D+0..D+(horizon-1) labels (today through horizon-1 days ahead)
+    forecast_dates = [base_date + timedelta(days=i) for i in range(0, horizon)]
+    week_times = [d.strftime('%A %d %b') for d in forecast_dates]
+
+    # Actual temps from historical data if available for those dates (may have gaps)
+    week_actual_temps = []
+    if _historical_data is not None and 'datetime' in _historical_data.columns:
+        hist_by_date = _historical_data.copy()
+        hist_by_date['date_only'] = hist_by_date['datetime'].dt.date
+        hist_map = hist_by_date.set_index('date_only')
+        for d in forecast_dates:
+            if d in hist_map.index and 'temp' in hist_map.columns:
+                val = hist_map.loc[d]['temp']
+                # If multiple rows per date, take the latest (handle Series)
+                if isinstance(val, (pd.Series, list)):
+                    try:
+                        v = float(val.iloc[-1])
+                    except Exception:
+                        v = None
+                else:
+                    try:
+                        v = float(val)
+                    except Exception:
+                        v = None
+                week_actual_temps.append(round(v, 2) if v is not None and pd.notna(v) else None)
+            else:
+                week_actual_temps.append(None)
+    else:
+        week_actual_temps = [None] * horizon
+
+    # Predicted temps based on the SELECTED DATE row's Pred_Day N columns
+    # Pred_Day 0 = today's prediction, Pred_Day 1 = tomorrow's prediction, etc.
+    week_pred_temps = [None] * horizon
+    if _predicted_data is not None and 'datetime' in _predicted_data.columns:
+        try:
+            pred_df = _predicted_data.copy()
+            pred_df['date_only'] = pred_df['datetime'].dt.date
+            base_row = pred_df[pred_df['date_only'] == base_date]
+            if not base_row.empty:
+                base_row = base_row.iloc[0]
+                # Find columns Pred_Day 0..N and sort by index number
+                pred_cols = []
+                for c in pred_df.columns:
+                    cl = c.lower().strip()
+                    if cl.startswith('pred_day'):
+                        try:
+                            idx = int(cl.replace('pred_day', '').strip())
+                            pred_cols.append((idx, c))
+                        except Exception:
+                            continue
+                pred_cols.sort(key=lambda x: x[0])
+                # Map D+0..D+(horizon-1) to Pred_Day 0..(horizon-1)
+                for i in range(horizon):
+                    try:
+                        col = next((c for (idx, c) in pred_cols if idx == i), None)
+                        if col is None:
+                            week_pred_temps[i] = None
+                        else:
+                            val = base_row.get(col, None)
+                            week_pred_temps[i] = round(float(val), 2) if val is not None and pd.notna(val) else None
+                    except Exception:
+                        week_pred_temps[i] = None
+        except Exception as e:
+            print(f"Pred mapping error: {e}")
+
+    # Trim week_temps fallback to horizon for legacy parser
     weather_data['week_times'] = json.dumps(week_times)
-    weather_data['week_temps'] = json.dumps(week_temps)
-    weather_data['week_hums'] = json.dumps(week_hums)
+    weather_data['week_temps'] = json.dumps(week_temps[:horizon] if week_temps else [])
+    # Humidity no longer used on the chart
+    weather_data['week_actual_temps'] = json.dumps(week_actual_temps)
+    weather_data['week_pred_temps'] = json.dumps(week_pred_temps)
+
+    # Build forecast items for template list (limit to actual data horizon)
+    # i=0 is today, i=1 is tomorrow, etc.
+    forecast_items = []
+    for i in range(0, forecast_box_horizon):
+        forecast_items.append({
+            'day': weather_data.get(f'time{i}', week_times[i] if i < len(week_times) else ''),
+            'temp': weather_data.get(f'temp{i}', None),
+            'hum': weather_data.get(f'hum{i}', None)
+        })
+    weather_data['forecast_items'] = forecast_items
     
     return render(request, 'weather.html', weather_data)

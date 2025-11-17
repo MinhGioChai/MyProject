@@ -56,46 +56,21 @@
                 </div>
             </div>
             <ul class="forecast-week">
+                {% for item in forecast_items %}
                 <li>
-                    <p class="forecast-day">{{ time1 }}</p>
-                    <h4 class="forecast-temp">{{ temp1 }}°C</h4>
-                    <p class="forecast-hum">Humidity: {{ hum1 }}%</p>
+                    <p class="forecast-day">{{ item.day }}</p>
+                    <h4 class="forecast-temp">{{ item.temp }}°C</h4>
+                    {% if item.hum %}
+                    <p class="forecast-hum">Humidity: {{ item.hum }}%</p>
+                    {% endif %}
                 </li>
-                <li>
-                    <p class="forecast-day">{{ time2 }}</p>
-                    <h4 class="forecast-temp">{{ temp2 }}°C</h4>
-                    <p class="forecast-hum">Humidity: {{ hum2 }}%</p>
-                </li>
-                <li>
-                    <p class="forecast-day">{{ time3 }}</p>
-                    <h4 class="forecast-temp">{{ temp3 }}°C</h4>
-                    <p class="forecast-hum">Humidity: {{ hum3 }}%</p>
-                </li>
-                <li>
-                    <p class="forecast-day">{{ time4 }}</p>
-                    <h4 class="forecast-temp">{{ temp4 }}°C</h4>
-                    <p class="forecast-hum">Humidity: {{ hum4 }}%</p>
-                </li>
-                <li>
-                    <p class="forecast-day">{{ time5 }}</p>
-                    <h4 class="forecast-temp">{{ temp5 }}°C</h4>
-                    <p class="forecast-hum">Humidity: {{ hum5 }}%</p>
-                </li>
-                <li>
-                    <p class="forecast-day">{{ time6 }}</p>
-                    <h4 class="forecast-temp">{{ temp6 }}°C</h4>
-                    <p class="forecast-hum">Humidity: {{ hum6 }}%</p>
-                </li>
-                <li>
-                    <p class="forecast-day">{{ time7 }}</p>
-                    <h4 class="forecast-temp">{{ temp7 }}°C</h4>
-                    <p class="forecast-hum">Humidity: {{ hum7 }}%</p>
-                </li>
+                {% endfor %}
             </ul>
             <canvas id="chart" height="200"
                 data-times='{{ week_times|safe }}'
                 data-temps='{{ week_temps|safe }}'
-                data-hums='{{ week_hums|safe }}'
+                data-actual-temps='{{ week_actual_temps|safe }}'
+                data-pred-temps='{{ week_pred_temps|safe }}'
             ></canvas>
         </section>
     </main>
