@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% load static %}
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Weekly Weather Forecast</title>
+    <link rel="icon" href="{% static 'img/website-pic.png' %}" type="image/png">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}"/>
+</head>
+
+<body>
+    <main class="{{ css_background_class }}">
+        <!-- LEFT: MAIN WEATHER DISPLAY -->
+        <section class="left-panel">
+            <div class="left-header">
+                <h1 class="primary-title">Weather Forecasting Project</h1>
+                <div class="date-top">
+                    <i class="bi bi-calendar"></i>{{ date }}
+                </div>
+            </div>
+            <div class="left-content">
+                <h2 class="condition-text">
+                    <i class ="bi {{ icon_class }}"></i> {{ description|capfirst }}
+                </h2>
+                <h1 class="temperature">{{ current_temp }}°C</h1>
+                <p class="city"> 
+                    <i class="bi bi-geo-alt-fill"></i> {{ city }}, {{ country }}</p>
+                <p class="feelslike">Feels like {{ feels_like }}°C</p>
+            </div>
+        </section>
+
+        <!-- RIGHT: DETAILS + WEEKLY FORECAST -->
+        <section class="right-panel">
+            <div class="details-box">
+                <div class="details">
+                    <p><i class="bi bi-droplet"></i> Humidity: <span>{{ humidity }}</span>%</p>
+                    <p><i class="bi bi-speedometer"></i> Pressure: <span>{{ pressure }}</span> hPa</p>
+                    <p><i class="bi bi-wind"></i> Wind: <span>{{ wind }}</span> km/h</p>
+                    <p><i class="bi bi-clouds"></i> Clouds: <span>{{ clouds }}</span>%</p>
+                    <p><i class="bi bi-eye"></i> Visibility: <span>{{ visibility }}</span> m</p>
+                </div>
+            </div>
+            <ul class="forecast-week">
+                <li>
+                    <p class="forecast-day">{{ time1 }}</p>
+                    <h4 class="forecast-temp">{{ temp1 }}°C</h4>
+                    <p class="forecast-hum">Humidity: {{ hum1 }}%</p>
+                </li>
+                <li>
+                    <p class="forecast-day">{{ time2 }}</p>
+                    <h4 class="forecast-temp">{{ temp2 }}°C</h4>
+                    <p class="forecast-hum">Humidity: {{ hum2 }}%</p>
+                </li>
+                <li>
+                    <p class="forecast-day">{{ time3 }}</p>
+                    <h4 class="forecast-temp">{{ temp3 }}°C</h4>
+                    <p class="forecast-hum">Humidity: {{ hum3 }}%</p>
+                </li>
+                <li>
+                    <p class="forecast-day">{{ time4 }}</p>
+                    <h4 class="forecast-temp">{{ temp4 }}°C</h4>
+                    <p class="forecast-hum">Humidity: {{ hum4 }}%</p>
+                </li>
+                <li>
+                    <p class="forecast-day">{{ time5 }}</p>
+                    <h4 class="forecast-temp">{{ temp5 }}°C</h4>
+                    <p class="forecast-hum">Humidity: {{ hum5 }}%</p>
+                </li>
+                <li>
+                    <p class="forecast-day">{{ time6 }}</p>
+                    <h4 class="forecast-temp">{{ temp6 }}°C</h4>
+                    <p class="forecast-hum">Humidity: {{ hum6 }}%</p>
+                </li>
+                <li>
+                    <p class="forecast-day">{{ time7 }}</p>
+                    <h4 class="forecast-temp">{{ temp7 }}°C</h4>
+                    <p class="forecast-hum">Humidity: {{ hum7 }}%</p>
+                </li>
+            </ul>
+            <canvas id="chart" height="200"
+                data-times='{{ week_times|safe }}'
+                data-temps='{{ week_temps|safe }}'
+                data-hums='{{ week_hums|safe }}'
+            ></canvas>
+        </section>
+    </main>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{% static 'js/chartSetup.js' %}"></script>
+</body>
+</html>
+
