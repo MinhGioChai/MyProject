@@ -343,7 +343,7 @@ main.clear{
     gap: 0;
     display: grid;
     grid-template-columns: 1fr 1fr;
-    grid-gap: 10px;
+    grid-gap: 8px;
     flex-shrink: 0;
 }
 
@@ -353,21 +353,21 @@ main.clear{
     margin: 0;
     display: flex;
     align-items: center;
-    gap: 9px;
+    gap: 8px;
     color: #ffffff;
-    padding: 4px 6px;
+    padding: 4px 5px;
 }
 
 .details p i {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     background: #ffffff; /* white square */
-    border-radius: 9px;
+    border-radius: 8px;
     color: #4A90E2; /* blue icon */
-    font-size: 18px;
+    font-size: 16px;
     flex-shrink: 0;
     box-shadow: 0 6px 14px rgba(0,0,0,0.15);
 }
@@ -393,9 +393,8 @@ main.clear{
     letter-spacing: 0.3px;
 }
 
-.forecast-title::before {
-    content: "📅";
-    font-size: 1.2rem;
+.forecast-title i {
+    font-size: 1.5rem;
 }
 
 .forecast-week {
@@ -482,10 +481,21 @@ main.clear{
     background: rgba(255, 255, 255, 0.2);
 }
 
-.forecast-day {
+.forecast-title {
     font-size: 11px;
+    font-weight: 600;
+    color: #ffffff;
+    margin: 10px 0 8px 0;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    text-align: left;
     opacity: 0.9;
-    margin-bottom: 4px;
+}
+
+.forecast-day {
+    font-size: 9px;
+    opacity: 0.9;
+    margin-bottom: 3px;
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -493,14 +503,14 @@ main.clear{
 }
 
 .forecast-temp {
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 600;
     margin: 2px 0;
     color: #ffffff;
 }
 
 .forecast-hum {
-    font-size: 10px;
+    font-size: 9px;
     opacity: 0.8;
     margin-top: 3px;
     color: #ffffff;

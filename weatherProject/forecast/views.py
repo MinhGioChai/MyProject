@@ -175,11 +175,20 @@ def weather_view(request):
                 if not matching_rows.empty:
                     selected_record = matching_rows.iloc[-1]
             except Exception:
-                # Ignore parsing errors; will fallback to latest
+                # Ignore parsing errors; will fallback to default
                 pass
-        # Fallback to latest record if no matching row
-        if selected_record is None and len(_historical_data) > 0:
-            selected_record = _historical_data.iloc[-1]
+        # Fallback to 2025-10-04 if no date selected
+        if selected_record is None:
+            try:
+                default_date = pd.to_datetime('2025-10-04').date()
+                matching_rows = _historical_data[_historical_data['datetime'].dt.date == default_date]
+                if not matching_rows.empty:
+                    selected_record = matching_rows.iloc[-1]
+                    selected_date_str = '2025-10-04'  # Set the date string to default
+            except Exception:
+                # Final fallback to latest record
+                if len(_historical_data) > 0:
+                    selected_record = _historical_data.iloc[-1]
 
     # Build base weather_data (defaults)
     weather_data = {
