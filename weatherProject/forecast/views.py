@@ -1,14 +1,7 @@
 from django.shortcuts import render
 from django.conf import settings
-import requests
 import pandas as pd
-import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
-from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
-from sklearn.metrics import mean_squared_error
-from datetime import datetime,timedelta
-import pytz
+from datetime import datetime, timedelta
 import os
 import json
 
@@ -217,14 +210,6 @@ def weather_view(request):
     weather_data['css_background_class'] = css_background_class
     
     # Prepare week series for template/JS (times, temps, hums)
-    # Add default forecast if not already set
-    for i in range(1, 8):
-        if f'time{i}' not in weather_data:
-            forecast_date = datetime.now() + timedelta(days=i)
-            weather_data[f'time{i}'] = forecast_date.strftime('%A %d %b')
-            weather_data[f'temp{i}'] = weather_data.get('current_temp', 29) + (i % 3)
-            weather_data[f'hum{i}'] = weather_data.get('humidity', 78) + (i % 5)
-    
     week_times = [weather_data[f'time{i}'] for i in range(1,8)]
     week_temps = [weather_data[f'temp{i}'] for i in range(1,8)]
     week_hums = [weather_data[f'hum{i}'] for i in range(1,8)]
