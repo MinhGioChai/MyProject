@@ -61,9 +61,7 @@
                 <li>
                     <p class="forecast-day">{{ item.day }}</p>
                     <h4 class="forecast-temp">{{ item.temp }}°C</h4>
-                    {% if item.hum %}
-                    <p class="forecast-hum">Humidity: {{ item.hum }}%</p>
-                    {% endif %}
+                    <p class="forecast-hum">{% if item.hum %}Humidity: {{ item.hum }}%{% else %}&nbsp;{% endif %}</p>
                 </li>
                 {% endfor %}
             </ul>

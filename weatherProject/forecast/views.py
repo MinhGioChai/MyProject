@@ -223,11 +223,16 @@ def weather_view(request):
                 matching_pred = pred_df[pred_df['date_only'] == parsed_date]
                 if not matching_pred.empty:
                     pred_row = matching_pred.iloc[-1]
-                    # Look for Pred_Day 0 column
+                    # Look for Pred_Day 0 column with flexible matching
+                    import re
                     for col in pred_row.index:
-                        if col.lower().strip() == 'pred_day 0':
-                            predicted_temp_today = int(pred_row[col]) if pd.notna(pred_row[col]) else None
-                            break
+                        col_lower = str(col).strip().lower()
+                        # Match patterns: "pred_day 0", "pred_day0", "pred day 0", etc.
+                        if 'pred' in col_lower and 'day' in col_lower:
+                            match = re.search(r'day\s*(\d+)', col_lower)
+                            if match and int(match.group(1)) == 0:
+                                predicted_temp_today = int(pred_row[col]) if pd.notna(pred_row[col]) else None
+                                break
             except Exception:
                 pass
         
@@ -263,12 +268,15 @@ def weather_view(request):
                 row_h = pred_df_h[pred_df_h['date_only'] == current_date]
                 if not row_h.empty:
                     cols = []
+                    import re
                     for c in pred_df_h.columns:
-                        cl = c.lower().strip()
-                        if cl.startswith('pred_day'):
+                        cl = str(c).strip().lower()
+                        if 'pred' in cl and 'day' in cl:
                             try:
-                                idx = int(cl.replace('pred_day', '').strip())
-                                cols.append(idx)
+                                match = re.search(r'day\s*(\d+)', cl)
+                                if match:
+                                    idx = int(match.group(1))
+                                    cols.append(idx)
                             except Exception:
                                 pass
                     if cols:
@@ -310,12 +318,16 @@ def weather_view(request):
                     if not matching_pred.empty:
                         pred_row = matching_pred.iloc[-1]
                         # Extract Pred_Day 0, 1, 2, 3, 4
+                        import re
                         for col in pred_row.index:
-                            col_lower = col.lower().strip()
-                            if col_lower.startswith('pred_day'):
+                            col_lower = str(col).strip().lower()
+                            # Match patterns: "pred_day 0", "pred_day0", "pred day 0", etc.
+                            if 'pred' in col_lower and 'day' in col_lower:
                                 try:
-                                    day_idx = int(col_lower.replace('pred_day', '').strip())
-                                    pred_temps_map[day_idx] = int(pred_row[col]) if pd.notna(pred_row[col]) else None
+                                    match = re.search(r'day\s*(\d+)', col_lower)
+                                    if match:
+                                        day_idx = int(match.group(1))
+                                        pred_temps_map[day_idx] = int(pred_row[col]) if pd.notna(pred_row[col]) else None
                                 except Exception:
                                     pass
                 except Exception:
@@ -385,12 +397,15 @@ def weather_view(request):
             row_h2 = pred_df_h2[pred_df_h2['date_only'] == base_date]
             if not row_h2.empty:
                 cols2 = []
+                import re
                 for c in pred_df_h2.columns:
-                    cl = c.lower().strip()
-                    if cl.startswith('pred_day'):
+                    cl = str(c).strip().lower()
+                    if 'pred' in cl and 'day' in cl:
                         try:
-                            idx = int(cl.replace('pred_day', '').strip())
-                            cols2.append(idx)
+                            match = re.search(r'day\s*(\d+)', cl)
+                            if match:
+                                idx = int(match.group(1))
+                                cols2.append(idx)
                         except Exception:
                             pass
                 if cols2:
@@ -444,11 +459,17 @@ def weather_view(request):
                 # Find columns Pred_Day 0..N and sort by index number
                 pred_cols = []
                 for c in pred_df.columns:
-                    cl = c.lower().strip()
-                    if cl.startswith('pred_day'):
+                    # Normalize column name: strip whitespace and lowercase
+                    cl = str(c).strip().lower()
+                    # Match patterns: "pred_day 0", "pred_day0", "pred day 0", etc.
+                    if 'pred' in cl and 'day' in cl:
                         try:
-                            idx = int(cl.replace('pred_day', '').strip())
-                            pred_cols.append((idx, c))
+                            # Extract the number after "day"
+                            import re
+                            match = re.search(r'day\s*(\d+)', cl)
+                            if match:
+                                idx = int(match.group(1))
+                                pred_cols.append((idx, c))  # Store original column name
                         except Exception:
                             continue
                 pred_cols.sort(key=lambda x: x[0])
